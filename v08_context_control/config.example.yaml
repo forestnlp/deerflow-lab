@@ -1,0 +1,18 @@
+# v08 模型网关：在线模式读环境变量，--fake 模式不需要。
+# demo 主对话；summary 专管折叠旧消息（本体 SummarizationConfig 同款分模型思路，
+# 且本体带候选模型链，学习版只留一个）。
+models:
+  - name: demo
+    display_name: 演示模型
+    use: "langchain_openai:ChatOpenAI"   # 反射目标：module:attr
+    model: Qwen3.8-Flash
+    base_url: $DFL_BASE_URL
+    api_key: $DFL_API_KEY
+    temperature: 0.2
+  - name: summary
+    display_name: 摘要专用（便宜快）
+    use: "langchain_openai:ChatOpenAI"
+    model: Qwen3.8-Flash
+    base_url: $DFL_BASE_URL
+    api_key: $DFL_API_KEY
+    temperature: 0.0

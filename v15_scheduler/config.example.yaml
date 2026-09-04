@@ -1,0 +1,15 @@
+models:
+  - name: demo
+    display_name: 演示模型
+    use: "langchain_openai:ChatOpenAI"   # 反射目标：module:attr
+    model: Qwen3.8-Flash
+    base_url: $DFL_BASE_URL
+    api_key: $DFL_API_KEY
+    temperature: 0.2
+
+# 在线模式（不带 --fake）加载的定时任务；--fake 用代码内剧本
+tasks:
+  - title: 小时报
+    prompt: 汇总上一小时指标并发到群里
+    schedule_type: cron
+    spec: {cron: "0 * * * *"}

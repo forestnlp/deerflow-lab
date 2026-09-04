@@ -1,0 +1,5 @@
+langchain==1.2.14
+langgraph>=1.0
+langgraph-checkpoint-sqlite>=2.0
+langchain-openai>=1.0
+pyyaml>=6.0

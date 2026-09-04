@@ -1,0 +1,10 @@
+# v13 网关配置：keys 段的值是环境变量名（值形如 "user:sk-xxx" / "admin:sk-yyy"）
+# --fake 模式由 main.py 注入演示值，在线模式必须自行 export，密钥永不进文件
+keys:
+  admin: DFL_ADMIN_KEY
+  user: DFL_USER_KEY
+
+# per-thread 令牌桶：capacity=一瞬可容请求数，refill_rate=每秒回填令牌数
+ratelimit:
+  capacity: 3
+  refill_rate: 1.0

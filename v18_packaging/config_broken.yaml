@@ -1,0 +1,14 @@
+# 故意写错的配置 —— 给 validate-config 演示"错误配置活不过启动期"。
+# 三处错：tools 条目缺 use；middlewares 的 use 不是 module:attr；models 缺 model 字段。
+models:
+  - name: demo
+    use: "langchain_openai:ChatOpenAI"
+
+tools:
+  - name: get_indicator
+    use: "tools_business:get_indicator"
+  - name: ghost_tool
+
+middlewares:
+  - name: broken
+    use: "middlewares_demo EchoUsageMiddleware"

@@ -1,0 +1,7 @@
+# deerflow-lab 全仓库共用依赖（二十版都是这几样的子集）
+langchain==1.2.14
+langgraph>=1.0
+langchain-openai>=1.0
+pyyaml>=6.0
+
+# v11+ 服务化版本会额外需要 fastapi/uvicorn（见各版 requirements.txt）

@@ -1,0 +1,9 @@
+# v11 模型网关（占位配置）：在线模式读环境变量，--fake 模式不需要
+models:
+  - name: demo
+    display_name: 演示模型
+    use: "langchain_openai:ChatOpenAI"   # 反射目标：module:attr
+    model: Qwen3.8-Flash
+    base_url: $DFL_BASE_URL
+    api_key: $DFL_API_KEY
+    temperature: 0.2
