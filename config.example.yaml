@@ -1,0 +1,20 @@
+# deerflow-lab 模型配置模板 —— 克隆后：cp config.example.yaml config.yaml，填入真实值。
+#
+# 语义抄自本体 config.yaml：models 每条 {name, use: "module:attr", ...构造参数}，
+# 工厂用反射把 use 字符串换成类（本体 packages/harness/deerflow/models/factory.py）。
+# $VAR 占位符由 shared/model_factory.py 展开成环境变量。
+
+models:
+  - name: demo
+    display_name: 任意 OpenAI 兼容网关
+    use: langchain_openai:ChatOpenAI
+    model: qwen-plus
+    api_key: $DFL_API_KEY
+    base_url: $DFL_BASE_URL
+    request_timeout: 600.0
+    max_retries: 2
+    max_tokens: 8192
+    temperature: 0.3
+    # 下面两行是"能力档案"元字段：给上层代码看的声明，工厂会剥掉、不进构造器。
+    supports_thinking: false
+    supports_vision: false

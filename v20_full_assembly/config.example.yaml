@@ -1,9 +1,0 @@
-# v20 配置：总装版运行只需要模型声明；中间件链的顺序在 lead_agent.py 里（那就是配置）
-models:
-  - name: demo
-    display_name: 演示模型
-    use: "langchain_openai:ChatOpenAI"   # 反射目标：module:attr
-    model: Qwen3.8-Flash
-    base_url: $DFL_BASE_URL
-    api_key: $DFL_API_KEY
-    temperature: 0.2

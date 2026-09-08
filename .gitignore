@@ -3,8 +3,5 @@ __pycache__/
 */data/
 .DS_Store
 
-# 本地真实配置（含密钥，绝不入库）；克隆后 cp vNN_*/config.example.yaml vNN_*/config.yaml
-v*/config.yaml
-
-# 归档包不入库
-*.zip
+# 本地真实配置（含密钥，绝不入库）；克隆后 cp config.example.yaml config.yaml
+/config.yaml

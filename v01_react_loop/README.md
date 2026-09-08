@@ -1,124 +1,138 @@
-# v01 · ReAct 循环：agent 的全部秘密就是一场乒乓
+# v01 · ReAct 循环 —— 智能体的心跳
 
-> 模型不会干活，模型只会"说话"。会干活的，是听到它说话后动手的那个循环。
+> 会调工具的 LLM，才算上了岗。
 
 ## 前情提要
 
-这是第一版，没有前情。但要预告一个后文：DeerFlow 有 30 多个中间件、8 个渠道、
-一整套调度器——它们全部挂在这一版的循环上。地基歪一寸，楼歪一丈。
+裸 LLM 只会说话，不会做事。让它"查华东收入再算合计"，它要么编一个数，
+要么把算术题留给你。本版给它两只手（工具）和一条心跳（循环），看它自己把活干完。
 
 ## 前置技术
 
-- **ChatModel**：一个对象，吃进消息列表，吐回一条 AI 回复。仅此接口，别无所求。
-- **tool（工具）**：一个带 docstring 的 Python 函数。docstring 是给模型看的说明书。
-- **tool_call**：模型回复里的一种特殊字段——"我想调用 calculator，参数是 …"。
-  注意：模型只是**表达愿望**，执行是框架的事。
-- **create_agent**：LangGraph 官方的装配函数，一行把"模型+工具"拼成循环。
+- **tool calling**：模型回复里可以带一段结构化请求（`tool_calls`），
+  内容是"我要调哪个工具、参数是什么"——它只负责点菜，做菜的是你的代码。
+- **@tool 装饰器**：把普通 Python 函数变成工具；函数 docstring 和类型注解
+  就是模型看到的说明书。
+- **消息历史**：对话是一个消息列表，四种角色各司其职——
+  `HumanMessage`（人说的）、`AIMessage`（模型说的，可能带 tool_calls）、
+  `ToolMessage`（工具结果，用 `tool_call_id` 挂回那次点菜）。
+- **反射工厂**：配置里写 `"module:attr"` 字符串，代码用
+  `import_module` + `getattr` 把字符串换成类。DeerFlow 本体全系统都靠它装配。
 
-## 原理：为什么叫"循环"
+## 原理
 
-模型一次调用只能输出一条消息。它想"先查资料再作答"怎么办？框架把
-它的话变成行动，把行动结果塞回对话，**再问它一遍**。如此往复，直到它不再点菜：
+ReAct（Reason + Act）不神秘，就是一个 while 循环。模型每轮二选一：
+要么点菜（发 tool_calls），要么交卷（纯文本回复）。代码只做一个判断：
 
 ```
-   用户: 算 (2+3)*7 并告诉我现在几点
-      │
-      ▼
- ┌─ model ──► "调 calculator('(2+3)*7')"   ← 第 1 问
- │    ▲
- │  tool 执行=35，结果塞回对话
- │    │
- │  model ──► "调 get_current_time()"      ← 第 2 问（它现在知道答案=35 了）
- │    ▲
- │  tool 执行=2026年09月04日
- │    │
- └──model ──► "报告：35，今天是…"           ← 不再调工具 = 循环终止
+        ┌───────────────┐
+        │  消息历史 → 模型  │
+        └───────┬───────┘
+        带 tool_calls? 
+          │是              │否
+   逐个执行工具          终稿到手
+   结果以 ToolMessage     循环结束
+   追加回历史 ──┐      （终止是模型
+                └──↺    自己决定的）
 ```
 
-历史教训在于终止条件：不是"模型说完了"，而是"**这一条回复里没有 tool_calls**"。
-所有 agent 的"自主性"都来自这个 while 循环，没有任何魔法。
+要紧的一点：**循环的终止条件是"模型不再点菜"，不是代码写死的步数**。
+本轮模型先并行查两个区域的收入，拿到数后又自己发起加法，再补一次业务量查询，
+最后才交卷——三步规划全是它自己排的，代码里一个字都没提"先查后算"。
 
 ## 代码精读
 
-`v01_react_loop/main.py` 核心只有五行：
-
-```python
-def build_agent(model):
-    return create_agent(model=model, tools=TOOLS)
-
-state = agent.invoke({"messages": [HumanMessage(content=prompt)]})
-for msg in state["messages"]:
-    print(type(msg).__name__, msg.content or msg.tool_calls)
-```
-
-最要紧的是最后一行：**消息列表就是全部真相**。模型的"记忆"、工具的"结果"、
-循环的"进度"，全都只是这个列表里的消息。后面每一版往列表里加花样
-（todos、摘要、注入的记忆），本质都是在**编排这个列表**。
-
-`tools.py` 里注意 docstring：
+工具就是带注解的函数（`v01_react_loop/main.py`）：
 
 ```python
 @tool
-def calculator(expression: str) -> str:
-    """计算一个算术表达式，例如 "(2+3)*7"。只支持数字与 +-*/**()。"""
+def query_sales(metric: str, region: str) -> str:
+    """查询邮政寄递业务的经营数字。metric 取 revenue(收入) 或 volume(业务量)；
+    region 是区域名，如 华东。"""
+    ...
 ```
 
-说明书写得含糊，模型就用得离谱。本体给模型的每个工具文档都是几十字的
-"什么时候用我、参数怎么写"，不是风格洁癖，是**接口设计**。
+说明书（docstring）写得越像给新同事交代工作，模型用得越准。
+`metric 取 revenue 或 volume` 这种取值枚举写进去，模型就很少瞎编参数。
+
+循环本体，全部机关在 `if not ai.tool_calls` 一行：
+
+```python
+for step in range(1, 9):
+    ai = model.invoke(messages)
+    messages.append(ai)
+    if not ai.tool_calls:            # 模型没点菜 = 交卷
+        return
+    for tc in ai.tool_calls:
+        result = TOOLS[tc["name"]].invoke(tc["args"])
+        messages.append(ToolMessage(content=result, tool_call_id=tc["id"]))
+```
+
+`tool_call_id` 是回执单号：一轮可能有几个点菜，结果必须按号归位，
+模型才知道哪个数对应哪道菜。9 轮上限是防呆保险，生产级的护栏在 v03 展开。
 
 ## 跑起来
 
 ```bash
-conda run -n deerflow_lab python v01_react_loop/main.py --fake
+conda run -n deerflow_lab python -m v01_react_loop.main    # 仓库根目录执行
 ```
 
-预期输出（确定性，一个字不差）：
+**机制信号**（每次运行都会出现，与模型措辞无关）：
+
+- 至少两轮 `[轮 N] 模型要求 -> query_sales(...)`，且合计一步出现
+  `calculator({'expression': '42.1 + 28.7'})`——模型自己决定要算这道加法；
+- 最后一行固定是 `[轮 N] 模型没有再调工具 -> 循环自然终止`。
+
+**实录参考**（某次真跑，你的措辞会不同）：
 
 ```
-[HumanMessage] 先算 (2+3)*7，再告诉我现在几点了，最后汇总报告。
-[AIMessage] tool_calls=[calculator '(2+3)*7']
-[ToolMessage] 35
-[AIMessage] tool_calls=[get_current_time ...]
-[ToolMessage] 2026年09月04日
-[AIMessage] 报告：(2+3)*7 = 35。时间查询已完成，任务结束。
+[用户] 先算华东和华南的收入合计（亿元），再查华东的业务量，最后告诉我这两个数哪个数字更大。
+
+[轮 1] 模型要求 -> query_sales({'metric': 'revenue', 'region': '华东'})
+          工具返回 -> 42.1亿
+[轮 1] 模型要求 -> query_sales({'metric': 'revenue', 'region': '华南'})
+          工具返回 -> 28.7亿
+[轮 2] 模型要求 -> calculator({'expression': '42.1 + 28.7'})
+          工具返回 -> 70.8
+[轮 2] 模型要求 -> query_sales({'metric': 'volume', 'region': '华东'})
+          工具返回 -> 3.12亿件
+[轮 3] 模型没有再调工具 -> 循环自然终止
+[终稿] …70.8 > 3.12…（还提醒了单位不同不能直接比——这不在剧本里）
 ```
 
-## Python 小课堂：反射——把字符串变成类
-
-本项目的 `config.yaml` 写着 `use: "langchain_openai:ChatOpenAI"`，工厂把
-字符串换成真类，靠的就是反射：
+## Python 小课堂：反射——字符串变类
 
 ```python
 from importlib import import_module
-module_path, attr = "langchain_openai:ChatOpenAI".split(":")
-cls = getattr(import_module(module_path), attr)   # 字符串 → 类
-model = cls(model="gpt-4o-mini", temperature=0.2)  # 类 → 实例
+cls = getattr(import_module("langchain_openai"), "ChatOpenAI")  # 字符串 → 类
+model = cls(model="qwen-plus", api_key="...")
 ```
 
-本体全仓库的模型、工具、渠道都是这个套路：**配置声明，反射装配**。
-好处是加一个模型/工具不用改一行代码，只改配置。
+配置驱动系统的通病是"加功能要改代码"；反射把"用哪个类"下沉到配置文件，
+本体新增一个模型接入，Python 代码零改动。
 
 ## 与市面对比
 
-| 做法 | 代表 | 与本版的差别 |
+| 做法 | 代表 | 差别 |
 |---|---|---|
-| 手写 while 循环 | 最早期 AutoGPT 教程 | 逻辑相同，但消息管理/并行工具/流式全自己扛 |
-| create_agent | LangGraph 官方 | 本版的装配层，官方帮你写好循环图 |
-| 中间件环绕循环 | DeerFlow / OpenClaw hooks | v02 登场：循环不动，行为可插拔 |
+| 手写 ReAct 循环 |  LangChain 0.x `AgentExecutor`、本书本版 | 循环可见，便于理解 |
+| 图执行器 | LangGraph `create_agent` | 同样的循环搬进状态图，多出中断/持久化能力（v02 起用） |
 
 ## 与本体差异（诚实声明）
 
-- 本体 `agents/factory.py` 的反射工厂还处理多 provider 修补、thinking 模式，本版只反射一条最直的路；
-- 本体工具来自 `config.yaml` 的 `tools:` 声明段，本版工具列表写死在 `tools.py`（v18 会补配置驱动）；
-- 本版无流式（stream），一次 `invoke` 拿全量——流式在 v11 作为一等公民登场。
+- 本体用 `PatchedChatOpenAI`（修 Gemini thought_signature 回传）；本版直连
+  `langchain_openai:ChatOpenAI`，机制同款、少了这层补丁。
+- 本体的工厂还要处理能力档案（thinking 开关合并 when_* 段）；本版只做
+  最小反射 + 元字段剥离（`shared/model_factory.py`）。
+- 数据是写死的字典；本体查真库。
 
 ## 练习
 
-给 `tools.py` 加一个 `days_until(date_str)` 工具（返回距目标日期还有几天），
-在 `fake_script` 里插一条对应 tool_call，确认 `[ToolMessage]` 出现在预期位置。
-（答案特征：消息列表多出一对 AI(tool_calls)+Tool 消息，终稿引用天数。）
+给 `main.py` 加第三个工具 `convert_unit(value: float, src: str, dst: str)`
+（亿元↔万元即可），把提问改成"把华南收入换算成万元"。
+**自证**：运行后能看到 `模型要求 -> convert_unit(...)`，且终稿数字 = 工具返回。
 
 ## 下一步
 
-循环能转了，但模型开始偷懒：任务做到一半直接"报告完成"。v02 造第一个
-中间件，把"不许提前交卷"变成制度。
+循环能跑但裸奔：没有计划约束、没有护栏、模型偷工减料没人管。
+v02 给循环装上"钩子"——中间件，看 DeerFlow 一系横切能力长在哪。
